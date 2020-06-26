@@ -8,6 +8,7 @@
 #include <utility>
 #include <limits>
 #include <fstream>
+#include <filesystem>
 
 HWND hWnd = GetConsoleWindow();
 HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -58,11 +59,30 @@ void WindowToMaterial(std::string sFileName) {
 	} while (sFileName.at(i) != '/');
 	std::reverse(sSaveLocation.begin(), sSaveLocation.end());
 
+	wchar_t EXEPath[MAX_PATH];
+	GetModuleFileName(NULL, EXEPath, MAX_PATH);
+
+	for (int i = 0; i < wcslen(EXEPath); i++)
+	{
+		if (EXEPath[i] == '\\')
+			EXEPath[i] = '/';
+	}
+
+	i = wcslen(EXEPath) - 1;
+	std::string sWorkingDirectory;
+	do {
+		EXEPath[i] = '\0';
+		i--;
+	} while (EXEPath[i] != '/');
+
+	SetCurrentDirectory(EXEPath);
+
+	system("mkdir images");
 	sSaveLocation = "images/" + sSaveLocation;
 	cv::imwrite(sSaveLocation, img);
 }
 
-void FullScreen(cv::Mat image) {
+void FullScreen(cv::Mat image, int fontSize) {
 	rectWindow = { 0, 0, 1, 1 };
 	SetConsoleWindowInfo(hConsole, TRUE, &rectWindow);
 
@@ -71,8 +91,8 @@ void FullScreen(cv::Mat image) {
 
 	SetConsoleActiveScreenBuffer(hConsole);
 
-	cfi.dwFontSize.X = 3;
-	cfi.dwFontSize.Y = 3;
+	cfi.dwFontSize.X = fontSize;
+	cfi.dwFontSize.Y = fontSize;
 	SetCurrentConsoleFontEx(hConsole, false, &cfi);
 
 	rectWindow = { 0, 3, coord.X - 1, coord.Y - 1 };
@@ -82,15 +102,15 @@ void FullScreen(cv::Mat image) {
 	ShowWindow(hWnd, SW_MAXIMIZE);
 }
 
-void Fit(cv::Mat& image) {
+void Fit(cv::Mat& image, int fontSize) {
 	RECT desktop;
 	GetWindowRect(GetDesktopWindow(), &desktop);
 
-	if (image.cols > desktop.right / 3 || image.rows > desktop.bottom / 3) {
-		float fResizeFactorX = float(image.cols) / (float(desktop.right) / 3.0f);
+	if (image.cols > desktop.right / fontSize || image.rows > desktop.bottom / fontSize) {
+		float fResizeFactorX = float(image.cols) / (float(desktop.right) / (float)fontSize);
 		cv::resize(image, image, cv::Size(image.cols / fResizeFactorX, image.rows), 0, 0, cv::InterpolationFlags::INTER_LINEAR_EXACT);
 
-		float fResizeFactorY = float(image.rows) / (float(desktop.bottom) / 3.0f);
+		float fResizeFactorY = float(image.rows) / (float(desktop.bottom) / (float)fontSize);
 		cv::resize(image, image, cv::Size(image.cols, image.rows / fResizeFactorY), 0, 0, cv::InterpolationFlags::INTER_LINEAR_EXACT);
 	}
 }
@@ -137,17 +157,22 @@ cv::Mat Draw() {
 	std::string sImageLocation = SelectImage();
 
 	char cMode;
-	std::cout << "Select ASCII art type: " << std::endl
+	std::cout << "Select ASCII art type" << std::endl
 		<< "1 - Gray Scale" << std::endl
 		<< "2 - Matrix" << std::endl
+		<< "3 - Inverted Grey Scale" << std::endl << std::endl
 		<< "Enter type: ";
 	std::cin >> cMode;
 
+	int nFontSize;
+	std::cout << std::endl << "Enter Font Size - Minimum is 3px: ";
+	std::cin >> nFontSize;
+
 	image = cv::imread(sImageLocation, cv::IMREAD_GRAYSCALE);
 
-	Fit(image);
+	Fit(image, nFontSize);
 
-	FullScreen(image);
+	FullScreen(image, nFontSize);
 	system("cls");
 
 	CHAR_INFO* buffer = new CHAR_INFO[image.cols * image.rows];
@@ -155,13 +180,6 @@ cv::Mat Draw() {
 
 	if (!image.empty())
 	{
-		/*float sss;
-		for (int y = 0; y < image.rows; y++)
-			for (int x = 0; x < image.cols; x++) {
-				sss = (float)(image.at<cv::Vec3b>(y, x)[0] + image.at<cv::Vec3b>(y, x)[1] + image.at<cv::Vec3b>(y, x)[2]) / 3.0f;
-				cArt.push_back(ASCII[int(roundf((sss) * 10.0f / 255.0f))]);
-			}*/
-
 		for (int y = 0; y < image.rows; y++)
 			for (int x = 0; x < image.cols; x++)
 				cArt.push_back(ASCII[int(roundf(float(image.at<uchar>(y, x)) * 10.0f / 255.0f))]);
@@ -176,6 +194,10 @@ cv::Mat Draw() {
 		if (cMode == '2')
 			for (int x = 0; x < cArt.size(); x++)
 				buffer[x].Attributes = 0x000A;
+
+		if (cMode == '3')
+			for (int x = 0; x < cArt.size(); x++)
+				buffer[x].Attributes = 0x00F0;
 	}
 
 	WriteConsoleOutputA(hConsole, buffer, coord, { 0,0 }, &rectWindow);
